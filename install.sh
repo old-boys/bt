@@ -3,21 +3,29 @@ PATH=/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:~/bin
 export PATH
 LANG=en_US.UTF-8
 is64bit=`getconf LONG_BIT`
-if [ "$is64bit" = '32' ];then
-	echo '=================================================';
-	echo -e "\033[31m BT-Panel Incompatible 32 bit OS. \033[0m";
-	exit;
-fi
 
 if [ -f "/usr/bin/apt-get" ];then
 	isDebian=`cat /etc/issue|grep Debian`
 	if [ "$isDebian" != "" ];then
-		wget -O install.sh http://download.bt.cn/install/install-ubuntu.sh && bash install.sh
+		wget -O install.sh http://download.bt.cn/install/install-ubuntu_6.0.sh && bash install.sh
 		exit;
 	else
-		wget -O install.sh http://download.bt.cn/install/install-ubuntu.sh && sudo bash install.sh
+		wget -O install.sh http://download.bt.cn/install/install-ubuntu_6.0.sh && sudo bash install.sh
 		exit;
 	fi
+fi
+
+if [ "$is64bit" != '64' ];then
+	echo "====================================="
+	echo "抱歉, 6.0不支持32位系统, 请使用64位系统或安装宝塔5.9!";
+	exit 0;
+fi
+
+py26=$(python -V 2>&1|grep '2.6.')
+if [ "$py26" != "" ];then
+	echo "====================================="
+	echo "抱歉, 6.0不支持Centos6.x,请安装Centos7或安装宝塔5.9";
+	exit 0;
 fi
 
 CN='http://125.88.182.172:5880'
@@ -58,13 +66,14 @@ Web_Service_Check(){
         fi
     fi
 }
+
 Web_Service_Check
 
 echo "
 +----------------------------------------------------------------------
-| Bt-WebPanel 5.x FOR CentOS/Redhat/Fedora/Ubuntu/Debian
+| Bt-WebPanel 6.0 FOR CentOS
 +----------------------------------------------------------------------
-| Copyright © 2015-2018 BT-SOFT(http://www.bt.cn) All rights reserved.
+| Copyright © 2015-2099 BT-SOFT(http://www.bt.cn) All rights reserved.
 +----------------------------------------------------------------------
 | The WebPanel URL will be http://SERVER_IP:8888 when installed.
 +----------------------------------------------------------------------
@@ -241,7 +250,7 @@ EOF
 #}
 #autoSwap
 
-##判断kernel-headers组件是否安装
+#判断kernel-headers组件是否安装
 rpm -qa | grep kernel-headers > kernel-headers.pl
 kernelStatus=`cat kernel-headers.pl`
 #判断华为云
@@ -259,20 +268,51 @@ fi
 rm -f kernel-headers.pl
 
 yum install ntp -y
-\cp -a -r /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+rm -rf /etc/localtime
+ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+
 echo 'Synchronizing system time...'
 ntpdate 0.asia.pool.ntp.org
 startTime=`date +%s`
 setenforce 0
 sed -i 's/SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
-for pace in python-devel python-imaging zip unzip openssl openssl-devel gcc libxml2 libxml2-dev libxslt* zlib zlib-devel libjpeg-devel libpng-devel libwebp libwebp-devel freetype freetype-devel lsof pcre pcre-devel vixie-cron crontabs icu libicu-devel c-ares;
-do 
-	yum -y install $pace; 
+for pace in python-devel python-imaging zip unzip openssl openssl-devel gcc libxml2 libxml2-devel libxslt* zlib zlib-devel libjpeg-devel libpng-devel libwebp libwebp-devel freetype freetype-devel lsof pcre pcre-devel vixie-cron crontabs icu libicu-devel c-ares;
+do
+	yum -y install ${pace}; 
 done
+
 if [ -f "/usr/bin/dnf" ]; then
 	dnf install -y redhat-rpm-config
 fi
 yum install python-devel -y
+
+py26=$(python -V 2>&1|grep '2.6.')
+if [ "$py26" != "" ];then
+	if [ ! -f /etc/yum.repos.d/epel.repo ];then
+		wget -O /etc/yum.repos.d/epel.repo http://mirrors.aliyun.com/repo/epel-7.repo
+	fi
+    if [ ! -f /usr/bin/python3 ];then
+		yum install python34 python34-devel -y
+		if [ ! -f /usr/bin/python3 ];then
+			echo "python3.4 install error!"
+			exit 0;
+		fi
+		isSed=$(cat /usr/bin/yum|grep /usr/bin/python2.6)
+		if [ "$isSed" == "" ];then
+			sed -i "s#/usr/bin/python#/usr/bin/python2.6#" /usr/bin/yum
+		fi
+		#rm -f /usr/bin/python2
+		mv -f /usr/bin/python /usr/bin/python2_backup
+		ln -sf /usr/bin/python3 /usr/bin/python
+	fi
+	if [ ! -f /usr/bin/pip3 ];then
+		wget --no-check-certificate https://bootstrap.pypa.io/get-pip.py
+		python3 get-pip.py
+		mv -f /usr/bin/pip /usr/bin/pip_backup 
+		ln -sf /usr/bin/pip3.4 /usr/bin/pip
+	fi
+fi
+
 tmp=`python -V 2>&1|awk '{print $2}'`
 pVersion=${tmp:0:3}
 
@@ -316,6 +356,8 @@ Install_pip()
 		echo -e "\033[31m Python-pip installation failed. \033[0m";
 		exit;
 	fi
+	
+	pip install -U pip
 }
 
 Install_Pillow()
@@ -444,26 +486,32 @@ if [ "$isPsutil" != "" ];then
 		pip uninstall psutil -y 
 	fi
 fi
+yum install libffi-devel -y
+pip install --upgrade setuptools
+pip install -U pip
+pip install itsdangerous==0.24
+pip install paramiko==2.0.2
+for p_name in psutil chardet virtualenv Flask Flask-Session Flask-SocketIO flask-sqlalchemy Pillow gunicorn gevent-websocket;
+do
+	pip install ${p_name}
+done
 
-pip install pip==9.0.3
-pip install psutil chardet web.py virtualenv
-
+pip install psutil chardet virtualenv Flask Flask-Session Flask-SocketIO flask-sqlalchemy Pillow gunicorn gevent-websocket paramiko
 Install_Pillow
 Install_psutil
+
+pip install gunicorn
 
 if [  -f /www/server/mysql/bin/mysql ]; then
 	pip install mysql-python
 	Install_mysqldb
 fi
 Install_chardet
-Install_webpy
 
 mkdir -p $setup_path/server/panel/logs
 mkdir -p $setup_path/server/panel/vhost/apache
 mkdir -p $setup_path/server/panel/vhost/nginx
 mkdir -p $setup_path/server/panel/vhost/rewrite
-wget -O $setup_path/server/panel/certbot-auto $download_Url/install/certbot-auto.init -T 5
-chmod +x $setup_path/server/panel/certbot-auto
 
 
 if [ -f '/etc/init.d/bt' ];then
@@ -480,8 +528,8 @@ if [ ! -f "/usr/bin/unzip" ];then
 	#rm -f /etc/yum.repos.d/epel.repo
 	yum install unzip -y
 fi
-wget -O panel.zip $download_Url/install/src/panel.zip -T 10
-wget -O /etc/init.d/bt $download_Url/install/src/bt.init -T 10
+wget -O panel.zip $download_Url/install/src/panel6.zip -T 10
+wget -O /etc/init.d/bt $download_Url/install/src/bt6.init -T 10
 if [ -f "$setup_path/server/panel/data/default.db" ];then
 	if [ -d "/$setup_path/server/panel/old_data" ];then
 		rm -rf $setup_path/server/panel/old_data
@@ -489,10 +537,8 @@ if [ -f "$setup_path/server/panel/data/default.db" ];then
 	mkdir -p $setup_path/server/panel/old_data
 	mv -f $setup_path/server/panel/data/default.db $setup_path/server/panel/old_data/default.db
 	mv -f $setup_path/server/panel/data/system.db $setup_path/server/panel/old_data/system.db
-	mv -f $setup_path/server/panel/data/aliossAs.conf $setup_path/server/panel/old_data/aliossAs.conf
-	mv -f $setup_path/server/panel/data/qiniuAs.conf $setup_path/server/panel/old_data/qiniuAs.conf
-	mv -f $setup_path/server/panel/data/iplist.txt $setup_path/server/panel/old_data/iplist.txt
 	mv -f $setup_path/server/panel/data/port.pl $setup_path/server/panel/old_data/port.pl
+	mv -f $setup_path/server/panel/data/admin_path.pl $setup_path/server/panel/old_data/admin_path.pl
 fi
 
 unzip -o panel.zip -d $setup_path/server/ > /dev/null
@@ -500,11 +546,8 @@ unzip -o panel.zip -d $setup_path/server/ > /dev/null
 if [ -d "$setup_path/server/panel/old_data" ];then
 	mv -f $setup_path/server/panel/old_data/default.db $setup_path/server/panel/data/default.db
 	mv -f $setup_path/server/panel/old_data/system.db $setup_path/server/panel/data/system.db
-	mv -f $setup_path/server/panel/old_data/aliossAs.conf $setup_path/server/panel/data/aliossAs.conf
-	mv -f $setup_path/server/panel/old_data/qiniuAs.conf $setup_path/server/panel/data/qiniuAs.conf
-	mv -f $setup_path/server/panel/old_data/iplist.txt $setup_path/server/panel/data/iplist.txt
 	mv -f $setup_path/server/panel/old_data/port.pl $setup_path/server/panel/data/port.pl
-	
+	mv -f $setup_path/server/panel/old_data/admin_path.pl $setup_path/server/panel/data/admin_path.pl
 	if [ -d "/$setup_path/server/panel/old_data" ];then
 		rm -rf $setup_path/server/panel/old_data
 	fi
@@ -520,9 +563,6 @@ fi
 
 rm -f $setup_path/server/panel/class/*.pyc
 rm -f $setup_path/server/panel/*.pyc
-python -m compileall $setup_path/server/panel
-#rm -f $setup_path/server/panel/class/*.py
-#rm -f $setup_path/server/panel/*.py
 
 
 
@@ -530,52 +570,68 @@ chmod +x /etc/init.d/bt
 chkconfig --add bt
 chkconfig --level 2345 bt on
 chmod -R 600 $setup_path/server/panel
-chmod +x $setup_path/server/panel/certbot-auto
 chmod -R +x $setup_path/server/panel/script
 ln -sf /etc/init.d/bt /usr/bin/bt
 echo "$port" > $setup_path/server/panel/data/port.pl
 /etc/init.d/bt start
+
 password=`cat /dev/urandom | head -n 16 | md5sum | head -c 8`
+sleep 1
+admin_auth='/www/server/panel/data/admin_path.pl'
+if [ ! -f $admin_auth ];then
+	auth_path=`cat /dev/urandom | head -n 16 | md5sum | head -c 8`
+	echo "/$auth_path" > $admin_auth
+fi
+auth_path=`cat $admin_auth`
 cd $setup_path/server/panel/
-username=`python tools.pyc panel $password`
+python -m py_compile tools.py
+python tools.py username
+username=`python tools.py panel $password`
 cd ~
 echo "$password" > $setup_path/server/panel/default.pl
 chmod 600 $setup_path/server/panel/default.pl
-
-isStart=`ps aux |grep 'python main.pyc'|grep -v grep|awk '{print $2}'`
+/etc/init.d/bt restart
+sleep 3
+isStart=`ps aux |grep 'gunicorn'|grep -v grep|awk '{print $2}'`
 if [ "$isStart" == '' ];then
 	echo -e "\033[31mERROR: The BT-Panel service startup failed.\033[0m";
 	echo '============================================'
 	exit;
 fi
 
-
-
-
-if [ -f "/etc/init.d/iptables" ];then
-	sshPort=`cat /etc/ssh/sshd_config | grep 'Port ' | grep -oE [0-9] | tr -d '\n'`
-	if [ "${sshPort}" != "22" ]; then
-		iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport $sshPort -j ACCEPT
+if [ ! -f /root/.ssh/authorized_keys ] || [ ! -f /root/.ssh/id_rsa ];then
+	if [ -f /root/.ssh/id_rsa ];then
+		rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub
 	fi
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 20 -j ACCEPT
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 21 -j ACCEPT
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport $port -j ACCEPT
-	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 39000:40000 -j ACCEPT
-	#iptables -I INPUT -p tcp -m state --state NEW -m udp --dport 39000:40000 -j ACCEPT
-	iptables -A INPUT -p icmp --icmp-type any -j ACCEPT
-	iptables -A INPUT -s localhost -d localhost -j ACCEPT
-	iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-	iptables -P INPUT DROP
-	service iptables save
-	sed -i "s#IPTABLES_MODULES=\"\"#IPTABLES_MODULES=\"ip_conntrack_netbios_ns ip_conntrack_ftp ip_nat_ftp\"#" /etc/sysconfig/iptables-config
-
-	iptables_status=`service iptables status | grep 'not running'`
-	if [ "${iptables_status}" == '' ];then
-		service iptables restart
-	fi
+	ssh-keygen -q -t rsa -P "" -f /root/.ssh/id_rsa
 fi
+cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+
+#if [ -f "/etc/init.d/iptables" ];then
+#	sshPort=`cat /etc/ssh/sshd_config | grep 'Port ' | grep -oE [0-9] | tr -d '\n'`
+#	if [ "${sshPort}" != "22" ]; then
+#		iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport $sshPort -j ACCEPT
+#	fi
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 20 -j ACCEPT
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 21 -j ACCEPT
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 22 -j ACCEPT
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport $port -j ACCEPT
+#	iptables -I INPUT -p tcp -m state --state NEW -m tcp --dport 39000:40000 -j ACCEPT
+#	#iptables -I INPUT -p tcp -m state --state NEW -m udp --dport 39000:40000 -j ACCEPT
+#	iptables -A INPUT -p icmp --icmp-type any -j ACCEPT
+#	iptables -A INPUT -s localhost -d localhost -j ACCEPT
+#	iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+#	iptables -P INPUT DROP
+#	service iptables save
+#	sed -i "s#IPTABLES_MODULES=\"\"#IPTABLES_MODULES=\"ip_conntrack_netbios_ns ip_conntrack_ftp ip_nat_ftp\"#" /etc/sysconfig/iptables-config
+#
+#	iptables_status=`service iptables status | grep 'not running'`
+#	if [ "${iptables_status}" == '' ];then
+#		service iptables restart
+#	fi
+#fi
 
 #if [ "${isVersion}" == '' ];then
 #	if [ ! -f "/etc/init.d/iptables" ];then
@@ -597,8 +653,8 @@ fi
 #		firewall-cmd --reload
 #	fi
 #fi
-#
-pip install psutil chardet web.py psutil virtualenv cryptography==2.1 > /dev/null 2>&1
+
+pip install psutil chardet psutil virtualenv cryptography==2.1 > /dev/null 2>&1
 
 if [ ! -d '/etc/letsencrypt' ];then
 	yum install epel-release -y
@@ -618,11 +674,26 @@ if [ ! -d '/etc/letsencrypt' ];then
 	fi
 fi
 
-acme_i=`curl -sS $download_Url/install/acme_install.sh|bash`
+wget -O acme_install.sh $download_Url/install/acme_install.sh
+nohup bash acme_install.sh &> /dev/null &
+sleep 1
+rm -f acme_install.sh
 
 address=""
 address=`curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/getIpAddress`
-ipCheck=`python -c "import re; print re.match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$','$address')"`
+if [ "$address" == '0.0.0.0' ] || [ "$address" == '' ];then
+	isHosts=`cat /etc/hosts|grep 'www.bt.cn'`
+	if [ "$isHosts" == '' ];then
+		echo "" >> /etc/hosts
+		echo "125.88.182.170 www.bt.cn" >> /etc/hosts
+		address=`curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/getIpAddress`
+		if [ "$address" == '' ];then
+			sed -i "/bt.cn/d" /etc/hosts
+		fi
+	fi
+fi
+
+ipCheck=`python -c "import re; print(re.match('^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$','$address'))"`
 if [ "$ipCheck" == "None" ];then
 	address="SERVER_IP"
 fi
@@ -631,13 +702,15 @@ if [ "$address" != "SERVER_IP" ];then
 	echo "$address" > $setup_path/server/panel/data/iplist.txt
 fi
 
-curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/SetupCount?type=Linux > /dev/null 2>&1
+curl -sS --connect-timeout 10 -m 60 https://www.bt.cn/Api/SetupCount?type=Linux\&o=$1 > /dev/null 2>&1
+echo /www > /var/bt_setupPath.conf
+/etc/init.d/bt start
 
 
 echo -e "=================================================================="
-echo -e "\033[32mCongratulations! Install succeeded!\033[0m"
+echo -e "\033[32mCongratulations! Installed successfully!\033[0m"
 echo -e "=================================================================="
-echo  "Bt-Panel: http://$address:$port"
+echo  "Bt-Panel: http://$address:$port$auth_path"
 echo -e "username: $username"
 echo -e "password: $password"
 echo -e "\033[33mWarning:\033[0m"
